@@ -1,0 +1,34 @@
+[package]
+name = "bevy_replicon_visible_sets"
+version = "0.0.1-rc.1"
+repository = "https://github.com/malfuu/bevy_replicon_visible_sets"
+authors = [
+    "malfuu <256192511+malfuu@users.noreply.github.com"
+]
+description = "Alternative visibility rules for bevy_replicon"
+readme = "README.md"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+keywords = [
+    "bevy",
+    "multiplayer",
+    "replication",
+    "server-authoritative",
+    "visibility",
+]
+categories = ["game-development"]
+
+[dependencies]
+bevy = { version = "0.19", default-features = false, features = ["serialize"] }
+bevy_replicon = { version = "0.41", default-features = false, features = ["server"] }
+
+[dev-dependencies]
+serde = { version = "1.0", default-features = false }
+bevy_replicon = { version = "0.41", default-features = false, features = ["server", "client"] }
+
+[[test]]
+name = "spawn"
+
+[[test]]
+name = "despawn"
+
