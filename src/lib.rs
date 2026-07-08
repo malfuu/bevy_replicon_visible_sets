@@ -1,22 +1,29 @@
-//! Entity visibility with the usage of Potentially Visible Sets and Layers.
-//!
-//! # Quick Start
-//!
-//! there is no quick start.
-//!
-//!
-//! > [!CAUTION]
+/*!
+Entity visibility with the usage of Potentially Visible Sets and Layers.
+
+# Quick Start
+
+there is no quick start.
+
+<div class="warning">
 //! > Using Replicon's high level [bevy_replicon::server::visibility::AppVisibilityExt] might cause
 //! > conflicts with this crate. Do not use it.
-//!
-//! # Entity Visibility
-//!
-//! Entities
-//!
-//! # Component Visibility
-//!
-//! Component Visibility is not implemented yet.
+</div>
+
+# Entity Visibility
+
+I should also add some details here.
+
+# Component Visibility
+
+Component Visibility is not implemented yet.
+*/
 #![deny(missing_docs)]
+
+/// Potentially Visible Set containers.
+pub mod container;
+/// Observers that see inside containers.
+pub mod observer;
 
 #[doc(hidden)]
 pub mod prelude;
@@ -30,6 +37,8 @@ use bevy_replicon::{
     },
     shared::replication::registry::ReplicationRegistry,
 };
+
+use crate::{container::update_visible_containers, observer::update_visible_observers};
 
 /// Plugin that enables visible set management.
 pub struct VisibilitySetPlugin;
@@ -55,7 +64,13 @@ impl Plugin for VisibilitySetPlugin {
             )
             .add_systems(
                 PostUpdate,
-                (new_clients, new_replicateds, removed_replicateds)
+                (
+                    new_clients,
+                    new_replicateds,
+                    removed_replicateds,
+                    always_visible_added,
+                    always_visible_removed,
+                )
                     .in_set(VisibilitySystems::Blacklisting),
             )
             .add_systems(
@@ -64,9 +79,13 @@ impl Plugin for VisibilitySetPlugin {
                     update_visible_containers,
                     update_visible_observers,
                     update_client_visible,
+                    sync_client_visible,
                 )
+                    .chain()
                     .in_set(VisibilitySystems::Update),
-            );
+            )
+            .add_observer(on_add_client_visibility)
+            .add_observer(on_remove_client_visibility);
     }
 }
 
@@ -76,7 +95,7 @@ pub enum VisibilitySystems {
     /// First step in visibility updates. Empty by default.
     First,
     /// Step for blacklisting visibility all entities,
-    /// effectively turning visibility whitelist only.
+    /// effectively making it whitelist only.
     /// Required due to replicon's blacklist nature.
     Blacklisting,
     /// General visibility updates.
@@ -86,28 +105,30 @@ pub enum VisibilitySystems {
 }
 
 /// Contains what [`VisibleObserver`]s a client can see through.
-/// Crate users must manually populate this hashset with entities containing [`VisibleObserver`].
-#[derive(Component)]
-pub struct ClientVisible(pub EntityHashSet);
-
-/// An entity that can see entities inside of containers.
-/// This can be given to a a player's character or a long distanced camera.
-/// Crate users must manually populate this hashset with entities containing [`VisibleContainer`].
-#[derive(Component)]
-pub struct VisibleObserver(pub EntityHashSet);
-
-/// Which [`VisibleContainer`] this entity is visible in.
-#[derive(Component)]
-#[relationship(relationship_target = VisibleContainer)]
-pub struct VisibleIn(pub Entity);
-
-/// Entities can be added and removed from this container using the [`VisibleIn`] relationship.
+/// Crate users must manually populate `observers` with entities containing [`VisibleObserver`].
 #[derive(Component, Default, Debug)]
-#[relationship_target(relationship = VisibleIn)]
-pub struct VisibleContainer {
-    #[relationship]
-    contained: EntityHashSet,
+pub struct ClientVisible {
+    /// Entities containing [`VisibleObserver`] that this client sees through.
+    pub observers: EntityHashSet,
+    /// Cached union of all entities visible to this client.
+    visible_entities: EntityHashSet,
+    /// Cached union of all entities visible to this client in the previous update, used to diff visibility changes.
+    previous_visible_entities: EntityHashSet,
 }
+
+impl ClientVisible {
+    /// Creates a new `ClientVisible` with the given observers.
+    pub fn new(observers: EntityHashSet) -> Self {
+        Self {
+            observers,
+            ..default()
+        }
+    }
+}
+
+/// Marks an entity as always visible to all clients.
+#[derive(Component, Reflect, Default, Debug)]
+pub struct AlwaysVisible;
 
 #[derive(Resource, Deref, Debug)]
 struct VisibleBit(FilterBit);
@@ -125,24 +146,25 @@ impl FromWorld for VisibleBit {
 
 fn new_clients(
     mut new_clients: Query<&mut ClientVisibility, Added<AuthorizedClient>>,
-    entities: Query<Entity, With<Replicated>>,
+    entities: Query<(Entity, Has<AlwaysVisible>), With<Replicated>>,
     bit: Res<VisibleBit>,
 ) {
-    for entity in &entities {
-        for mut visibility in &mut new_clients {
-            visibility.set(entity, **bit, false);
+    for mut visibility in &mut new_clients {
+        for (entity, always_visible) in &entities {
+            visibility.set(entity, **bit, always_visible);
         }
     }
 }
 
 fn new_replicateds(
-    entities: Query<Entity, Added<Replicated>>,
-    mut clients: Query<&mut ClientVisibility>,
+    entities: Query<(Entity, Has<AlwaysVisible>), Added<Replicated>>,
+    mut clients: Query<(&mut ClientVisibility, &ClientVisible)>,
     bit: Res<VisibleBit>,
 ) {
-    for entity in &entities {
-        for mut visibility in &mut clients {
-            visibility.set(entity, **bit, false);
+    for (mut visibility, client_visible) in &mut clients {
+        for (entity, always_visible) in &entities {
+            let is_visible = always_visible || client_visible.visible_entities.contains(&entity);
+            visibility.set(entity, **bit, is_visible);
         }
     }
 }
@@ -152,30 +174,93 @@ fn removed_replicateds(
     mut clients: Query<&mut ClientVisibility>,
     bit: Res<VisibleBit>,
 ) {
-    for entity in entities.read() {
-        for mut visibility in &mut clients {
+    let removed: Vec<Entity> = entities.read().collect();
+
+    for mut visibility in &mut clients {
+        for &entity in &removed {
             visibility.set(entity, **bit, true);
         }
     }
 }
 
-fn update_visible_containers(
-    _containers: Query<Ref<VisibleContainer>>,
-    mut _observers: Query<Mut<VisibleObserver>>,
+fn always_visible_added(
+    entities: Query<Entity, (Added<AlwaysVisible>, With<Replicated>)>,
+    mut clients: Query<&mut ClientVisibility>,
+    bit: Res<VisibleBit>,
 ) {
-    todo!()
+    for mut visibility in &mut clients {
+        for entity in &entities {
+            visibility.set(entity, **bit, true);
+        }
+    }
 }
 
-fn update_visible_observers(
-    mut _clients: Query<&mut ClientVisibility>,
-    _observers: Query<&VisibleObserver>,
+fn always_visible_removed(
+    mut removed: RemovedComponents<AlwaysVisible>,
+    replicated_entities: Query<Entity, With<Replicated>>,
+    mut clients: Query<(&mut ClientVisibility, &ClientVisible)>,
+    bit: Res<VisibleBit>,
 ) {
-    todo!()
+    if removed.is_empty() {
+        return;
+    }
+
+    let removed_entities: EntityHashSet = removed.read().collect();
+
+    for (mut visibility, client_visible) in &mut clients {
+        for &entity in &removed_entities {
+            if !replicated_entities.contains(entity) {
+                continue;
+            }
+
+            let is_visible = client_visible.visible_entities.contains(&entity);
+            visibility.set(entity, **bit, is_visible);
+        }
+    }
 }
 
 fn update_client_visible(
-    mut _clients: Query<(&mut ClientVisibility, &ClientVisible)>,
-    _observers: Query<&VisibleObserver>,
+    mut clients: Query<(&mut ClientVisibility, &ClientVisible), Changed<ClientVisible>>,
+    bit: Res<VisibleBit>,
 ) {
-    todo!()
+    for (mut visibility, client_visible) in clients.iter_mut() {
+        let current = &client_visible.visible_entities;
+        let previous = &client_visible.previous_visible_entities;
+
+        let appearing_entities = current.difference(previous);
+        let disappearing_entities = previous.difference(current);
+
+        for &entity in appearing_entities {
+            visibility.set(entity, **bit, true);
+        }
+        for &entity in disappearing_entities {
+            visibility.set(entity, **bit, false);
+        }
+    }
+}
+
+fn sync_client_visible(mut clients: Query<Mut<ClientVisible>, Changed<ClientVisible>>) {
+    for mut client_visible in clients.iter_mut() {
+        let client_visible = client_visible.bypass_change_detection();
+        client_visible
+            .previous_visible_entities
+            .clone_from(&client_visible.visible_entities);
+    }
+}
+
+fn on_add_client_visibility(
+    trigger: On<Add, ClientVisibility>,
+    mut commands: Commands,
+    clients: Query<(), Without<ClientVisible>>,
+) {
+    // yes, the user might have insreted its own client visible.
+    if clients.contains(trigger.entity) {
+        commands
+            .entity(trigger.entity)
+            .insert(ClientVisible::default());
+    }
+}
+
+fn on_remove_client_visibility(trigger: On<Remove, ClientVisibility>, mut commands: Commands) {
+    commands.entity(trigger.entity).remove::<ClientVisible>();
 }

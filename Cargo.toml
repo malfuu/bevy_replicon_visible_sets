@@ -1,9 +1,10 @@
 [package]
 name = "bevy_replicon_visible_sets"
-version = "0.0.1-rc.1"
+version = "0.0.1-rc.2"
 repository = "https://github.com/malfuu/bevy_replicon_visible_sets"
+documentation = "https://docs.rs/bevy_replicon_visible_sets/latest/bevy_replicon_visible_sets/"
 authors = [
-    "malfuu <256192511+malfuu@users.noreply.github.com"
+    "malfuu <256192511+malfuu@users.noreply.github.com>"
 ]
 description = "Alternative visibility rules for bevy_replicon"
 readme = "README.md"
@@ -27,8 +28,14 @@ serde = { version = "1.0", default-features = false }
 bevy_replicon = { version = "0.41", default-features = false, features = ["server", "client"] }
 
 [[test]]
-name = "spawn"
+name = "container"
 
 [[test]]
-name = "despawn"
+name = "observer"
+
+[[test]]
+name = "client_visible"
+
+[[test]]
+name = "always_visible"
 

@@ -1,4 +1,5 @@
 pub use crate::{
-    ClientVisible, VisibilitySetPlugin, VisibilitySystems, VisibleContainer, VisibleIn,
-    VisibleObserver,
+    AlwaysVisible, ClientVisible, VisibilitySetPlugin, VisibilitySystems,
+    container::{VisibleContainer, VisibleIn},
+    observer::VisibleObserver,
 };
