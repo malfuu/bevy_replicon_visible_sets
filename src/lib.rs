@@ -10,6 +10,10 @@ there is no quick start.
 //! > conflicts with this crate. Do not use it.
 </div>
 
+# Clients
+
+All Client entities have [`ClientVisible`] added to them, as a registered require component.
+
 # Entity Visibility
 
 I should also add some details here.
@@ -84,8 +88,7 @@ impl Plugin for VisibilitySetPlugin {
                     .chain()
                     .in_set(VisibilitySystems::Update),
             )
-            .add_observer(on_add_client_visibility)
-            .add_observer(on_remove_client_visibility);
+            .register_required_components::<ClientVisibility, ClientVisible>();
     }
 }
 
@@ -246,21 +249,4 @@ fn sync_client_visible(mut clients: Query<Mut<ClientVisible>, Changed<ClientVisi
             .previous_visible_entities
             .clone_from(&client_visible.visible_entities);
     }
-}
-
-fn on_add_client_visibility(
-    trigger: On<Add, ClientVisibility>,
-    mut commands: Commands,
-    clients: Query<(), Without<ClientVisible>>,
-) {
-    // yes, the user might have insreted its own client visible.
-    if clients.contains(trigger.entity) {
-        commands
-            .entity(trigger.entity)
-            .insert(ClientVisible::default());
-    }
-}
-
-fn on_remove_client_visibility(trigger: On<Remove, ClientVisibility>, mut commands: Commands) {
-    commands.entity(trigger.entity).remove::<ClientVisible>();
 }

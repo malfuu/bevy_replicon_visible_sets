@@ -1,6 +1,6 @@
 [package]
 name = "bevy_replicon_visible_sets"
-version = "0.0.1-rc.2"
+version = "0.0.1-rc.3"
 repository = "https://github.com/malfuu/bevy_replicon_visible_sets"
 documentation = "https://docs.rs/bevy_replicon_visible_sets/latest/bevy_replicon_visible_sets/"
 authors = [
