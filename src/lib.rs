@@ -3,7 +3,7 @@ Entity visibility with the usage of Potentially Visible Sets and Layers.
 
 # Quick Start
 
-there is no quick start.
+There is no quick start yet. Details coming soon.
 
 <div class="warning">
 //! > Using Replicon's high level [bevy_replicon::server::visibility::AppVisibilityExt] might cause
@@ -13,10 +13,11 @@ there is no quick start.
 # Clients
 
 All Client entities have [`ClientVisible`] added to them, as a registered require component.
+This component tracks the visible observers and entities for each client.
 
 # Entity Visibility
 
-I should also add some details here.
+I should also add some details here. Details coming soon.
 
 # Component Visibility
 
