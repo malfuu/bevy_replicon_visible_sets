@@ -265,7 +265,6 @@ fn switching_observer_does_not_lose_visibility() {
 
     assert_eq!(count_entities::<TestComponent>(&mut client_app), 1);
 
-    // Switch observers in the same tick: remove observer_a, add observer_b
     server_app
         .world_mut()
         .entity_mut(client_entity)

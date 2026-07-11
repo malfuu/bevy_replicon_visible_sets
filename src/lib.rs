@@ -28,6 +28,8 @@ Component Visibility is not implemented yet.
 pub mod container;
 /// Observers that see inside containers.
 pub mod observer;
+/// Visibility Masks.
+pub mod visibility_mask;
 
 #[doc(hidden)]
 pub mod prelude;
